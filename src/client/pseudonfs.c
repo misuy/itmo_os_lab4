@@ -334,10 +334,10 @@ int pseudonfs_init(void)
 }
 
 
-int pseudonfs_exit(void)
+void pseudonfs_exit(void)
 {
     printk(KERN_INFO "unregister pseudonfs\n");
-    return unregister_filesystem(&pseudonfs_fs_type);
+    unregister_filesystem(&pseudonfs_fs_type);
 }
 
 
