@@ -38,9 +38,9 @@ int call_method(ServerInfo *info, MethodRequest *req, MethodResponse *resp)
     while (vec.iov_len > 0)
     {
         int recv = kernel_recvmsg(sock, &hdr, &vec, 1, vec.iov_len, 0);
-        if (ret == 0)
+        if (recv == 0)
             break;
-        if (ret < 0)
+        if (recv < 0)
         {
             kernel_sock_shutdown(sock, SHUT_RDWR);
             sock_release(sock);
