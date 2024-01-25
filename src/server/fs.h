@@ -9,6 +9,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <inttypes.h>
+
+#define uint32_t uint32_t
 
 #include "../shared/protocol.h"
 

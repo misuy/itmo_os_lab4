@@ -11,7 +11,7 @@
 
 typedef struct Data
 {
-    int32_t length;
+    int length;
     char data[MAX_DATA_LENGTH];
 } Data;
 
@@ -37,7 +37,7 @@ typedef struct Object
 
 typedef struct Objects
 {
-    uint16_t count;
+    unsigned short count;
     Object objects[MAX_OBJECTS_COUNT];
 } Objects;
 

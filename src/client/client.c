@@ -11,6 +11,7 @@ int call_method(ServerInfo *info, MethodRequest *req, MethodResponse *resp)
 
     if (kernel_connect(sock, (struct sockaddr *) &addr, sizeof(struct sockaddr_in), 0) < 0)
     {
+        printk(KERN_ERR "can't connect to server\n");
         sock_release(sock);
         return -1;
     }
@@ -24,6 +25,7 @@ int call_method(ServerInfo *info, MethodRequest *req, MethodResponse *resp)
 
     if (kernel_sendmsg(sock, &hdr, &vec, 1, vec.iov_len) < 0)
     {
+        printk(KERN_ERR "sendmsg error\n");
         kernel_sock_shutdown(sock, SHUT_RDWR);
         sock_release(sock);
         return -1;
@@ -42,6 +44,7 @@ int call_method(ServerInfo *info, MethodRequest *req, MethodResponse *resp)
             break;
         if (recv < 0)
         {
+            printk(KERN_ERR "recvmsg err\n");
             kernel_sock_shutdown(sock, SHUT_RDWR);
             sock_release(sock);
             return -1;

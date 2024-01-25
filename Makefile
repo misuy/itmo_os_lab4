@@ -7,3 +7,7 @@ pseudonfs-build:
 
 pseudonfs-clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(shell pwd) clean
+
+
+server-build:
+	gcc -o server src/server/main.c src/server/fs.c
