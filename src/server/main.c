@@ -63,6 +63,7 @@ int main(int argc, char **argv)
             printf("accpet error\n");
             goto accept_new_conn;
         }
+        printf("got connection\n");
         MethodRequest req;
         MethodResponse resp;
         while (1)

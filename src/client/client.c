@@ -8,6 +8,7 @@ int call_method(ServerInfo *info, MethodRequest *req, MethodResponse *resp)
         return -1;
     
     struct sockaddr_in addr = { .sin_family = AF_INET, .sin_addr = { .s_addr = in_aton(info->ip) }, .sin_port = htons(info->port) };
+    printk(KERN_INFO "addr: %s:%d", info->ip, info->port);
 
     if (kernel_connect(sock, (struct sockaddr *) &addr, sizeof(struct sockaddr_in), 0) < 0)
     {
