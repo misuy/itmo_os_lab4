@@ -377,8 +377,7 @@ struct dentry * pseudonfs_mount(struct file_system_type *type, int flags, const 
     memcpy(info->ip, addr, it);
     info->ip[it] = 0;
 
-    char *addrcpy = addr;
-    sprintf(addrcpy + it + 1, "%u", info->port);
+    kstrtou16(addr + it + 1, 10, &info->port);
 
     ret->d_sb->s_fs_info = (void *) info;
 
