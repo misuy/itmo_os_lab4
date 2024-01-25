@@ -66,35 +66,33 @@ int main(int argc, char **argv)
         printf("got connection\n");
         MethodRequest req;
         MethodResponse resp;
-        while (1)
+        memset(&req, 0, sizeof(MethodRequest));
+        memset(&resp, 0, sizeof(MethodResponse));
+        uint32_t to_read = sizeof(MethodRequest);
+        while (to_read > 0)
         {
-            memset(&req, 0, sizeof(MethodRequest));
-            memset(&resp, 0, sizeof(MethodResponse));
-            uint32_t to_read = sizeof(MethodRequest);
-            while (to_read > 0)
+            int len = read(connfd, &req + (sizeof(MethodRequest) - to_read), to_read);
+            if (len < 0)
             {
-                int len = read(connfd, &req + (sizeof(MethodRequest) - to_read), to_read);
-                if (len < 0)
-                {
-                    printf("reading err\n");
-                    goto accept_new_conn;
-                }
-                to_read -= len;
+                printf("reading err\n");
+                goto accept_new_conn;
             }
-            printf("got request\n");
-            fs_handle(&fs, &req, &resp);
-            uint32_t to_write = sizeof(MethodResponse);
-            while (to_write > 0)
-            {
-                int len = write(connfd, &resp + (sizeof(MethodResponse) - to_write), to_write);
-                if (len < 0)
-                {
-                    printf("writing err\n");
-                    goto accept_new_conn;
-                }
-                to_write -= len;
-            }
-            printf("sent response\n");
+            to_read -= len;
         }
+        printf("got request\n");
+        fs_handle(&fs, &req, &resp);
+        uint32_t to_write = sizeof(MethodResponse);
+        while (to_write > 0)
+        {
+            int len = write(connfd, &resp + (sizeof(MethodResponse) - to_write), to_write);
+            if (len < 0)
+            {
+                printf("writing err\n");
+                goto accept_new_conn;
+            }
+            to_write -= len;
+        }
+        printf("sent response\n");
+        close(connfd);
     }
 }
