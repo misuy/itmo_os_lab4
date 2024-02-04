@@ -378,7 +378,8 @@ struct dentry * pseudonfs_mount(struct file_system_type *type, int flags, const 
     memcpy(info->ip, addr, it);
     info->ip[it] = 0;
 
-    kstrtou16(addr + it + 1, 10, &info->port);
+    if (kstrtou16(addr + it + 1, 10, &info->port) < 0)
+        printk(KERN_ERR "bad port\n");
 
     ret->d_sb->s_fs_info = (void *) info;
 

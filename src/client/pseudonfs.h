@@ -14,4 +14,7 @@
 
 #include "client.h"
 
+#define S_IFDIR 0040000
+#define S_IFREG 0100000
+
 #endif

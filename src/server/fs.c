@@ -1,7 +1,10 @@
 #include "fs.h"
 
+#include <stdlib.h>
+
 int fs_init(char *path, FS *fs)
 {
+    printf("fs_init %s\n", path);
     int fd = open(path, 0);
     if (fd < 0)
         return -1;
@@ -62,6 +65,7 @@ int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
 
 int fs_find_object_by_inode_n(FS *fs, ino_t inode_n)
 {
+    printf("find: %lu\n", inode_n);
     int res = 0;
     if (fs_find_object_by_inode_n_impl(fs->root, fs->root, inode_n, &res) < 0)
         return -1;
@@ -70,6 +74,7 @@ int fs_find_object_by_inode_n(FS *fs, ino_t inode_n)
 
 int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
 {
+    printf("create\n");
     int parent_fd = fs_find_object_by_inode_n(fs, req->parent_inode_n);
     if (parent_fd <= 0)
         return -1;
@@ -117,6 +122,8 @@ int fs_handle_link(FS *fs, LinkRequest *req, LinkResponse *resp)
     if (source_fd <= 0)
         return -1;
 
+    printf("link: name: %s, to_fd: %d\n", req->name, source_fd);
+
     if (linkat(source_fd, "", parent_fd, req->name, 0) < 0)
         return -1;
     
@@ -129,6 +136,7 @@ int fs_handle_link(FS *fs, LinkRequest *req, LinkResponse *resp)
 
 int fs_handle_unlink(FS *fs, UnlinkRequest *req, UnlinkResponse *resp)
 {
+    printf("unlink\n");
     int parent_fd = fs_find_object_by_inode_n(fs, req->parent_inode_n);
     if (parent_fd <= 0)
         return -1;
@@ -151,6 +159,8 @@ int fs_handle_read(FS *fs, ReadRequest *req, ReadResponse *resp)
     resp->data.length = read(fd, resp->data.data, MAX_DATA_LENGTH);
     if (resp->data.length < 0)
         return -1;
+
+    printf("read: %d\n", resp->data.length);
     
     if (fd != fs->root)
         close(fd);
@@ -162,6 +172,8 @@ int fs_handle_write(FS *fs, WriteRequest *req, WriteResponse *resp)
     int fd = fs_find_object_by_inode_n(fs, req->inode_n);
     if (fd <= 0)
         return -1;
+
+    printf("write: %d\n", req->data.length);
 
     if (write(fd, req->data.data, req->data.length) < 0)
         return -1;
@@ -202,8 +214,13 @@ int fs_handle_list(FS *fs, ListRequest *req, ListResponse *resp)
             if (resp->objects.count >= MAX_OBJECTS_COUNT)
                 return -1;
         }
+        free(ent);
     }
 
+
+    printf("list: %d objects\n", resp->objects.count);
+
+    closedir(dir);
     if (fd != fs->root)
         close(fd);
     return 0;
@@ -217,6 +234,8 @@ int fs_handle_rmdir(FS *fs, RmdirRequest *req, RmdirResponse *resp)
 
     if (fchdir(parent_fd) < 0)
         return -1;
+
+    printf("rmdir: name: %s, parent_ino: %d\n", req->name, parent_fd);
 
     if (rmdir(req->name) < 0)
         return -1;
@@ -251,6 +270,8 @@ int fs_handle_lookup(FS *fs, LookupRequest *req, LookupResponse *resp)
     
     resp->info = (ObjectInfo) { .inode_n = st.st_ino, .type = type };
 
+
+    printf("lookup: %lu\n", resp->info.inode_n);
     if (parent_fd != fs->root)
         close(parent_fd);
     if (fd != fs->root)
@@ -265,12 +286,14 @@ int fs_handle_mount(FS *fs, MountRequest *req, MountResponse *resp)
         return -1;
     
     resp->inode_n = st.st_ino;
+    printf("mount: %lu\n", resp->inode_n);
 
     return 0;
 }
 
 void fs_handle(FS *fs, MethodRequest *req, MethodResponse *resp)
 {
+    printf("fs_handle\n");
     int res = 0;
     resp->type = req->type;
     switch (req->type)
