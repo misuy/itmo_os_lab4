@@ -24,6 +24,7 @@ typedef struct FS
 } FS;
 
 int fs_init(char *path, FS *fs);
+void fs_clean(FS *fs);
 void fs_handle(FS *fs, MethodRequest *req, MethodResponse *resp);
 
 #endif

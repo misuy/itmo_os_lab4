@@ -18,28 +18,48 @@ int fs_init(char *path, FS *fs)
     return 0;
 }
 
+void fs_clean(FS *fs)
+{
+    long n = sysconf(_SC_OPEN_MAX);
+    for (long i = 5; i < n; i++)
+        close(i);
+}
+
 int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
 {
     if (fd == 0)
         return -1;
 
-    fchdir(fd);
+    if (fchdir(fd) < 0)
+    {
+        printf("ERR: find_by_inode cant change dir\n");
+        return -1;
+    }
 
     struct stat st;
     if (fstat(fd, &st) < 0)
+    {
+        printf("ERR: find_by_inode cant get stat\n");
         return -1;
+    }
+
+    printf("find_by_inode now in %lu\n", st.st_ino);
 
     if (st.st_ino == inode_n)
     {
+        printf("find_by_inode found! %lu\n", st.st_ino);
         *res = fd;
-        return 0;
+        return 2;
     }
 
     if (S_ISDIR(st.st_mode))
     {
         DIR *dir = fdopendir(fd);
         if (!dir)
+        {
+            printf("ERR: find_by_inode cant open dir\n");
             return -1;
+        }
 
         struct dirent *ent;
         while (ent = readdir(dir))
@@ -48,27 +68,45 @@ int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
             {
                 int new_fd = open(ent->d_name, 0);
                 if (new_fd <= 0)
+                {
+                    printf("ERR: find_by_inode cant open fd\n");
                     return -1;
-                if (fs_find_object_by_inode_n_impl(fd, new_fd, inode_n, res) < 0)
+                }
+                int rec = fs_find_object_by_inode_n_impl(fd, new_fd, inode_n, res);
+                if (rec < 0)
+                {
+                    close(new_fd);
                     return -1;
-                if (*res != 0)
-                    return 0;
+                }
+                else if (rec == 2)
+                {
+                    return 1;
+                }
+                else if (rec == 1)
+                {
+                    close(new_fd);
+                    return 1;
+                }
                 close(new_fd);
             }
         }
-        closedir(dir);
     }
 
-    fchdir(old_fd);
+    if (fchdir(old_fd) < 0)
+    {
+        printf("ERR: find_by_inode cant change dir\n");
+        return -1;
+    }
     return 0;
 }
 
 int fs_find_object_by_inode_n(FS *fs, ino_t inode_n)
 {
-    printf("find: %lu\n", inode_n);
+    printf("find: %lu, root: %d\n", inode_n, fs->root);
     int res = 0;
     if (fs_find_object_by_inode_n_impl(fs->root, fs->root, inode_n, &res) < 0)
         return -1;
+    printf("find: found: %d\n", res);
     return res;
 }
 
@@ -88,7 +126,7 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
     switch (req->type)
     {
         case OBJECT_TYPE_FILE:
-            fd = creat(req->name, 0);
+            fd = creat(req->name, S_IRWXU | S_IRWXG | S_IRWXO);
             if (fd < 0)
                 return -1;
             if (fstat(fd, &st) < 0)
@@ -114,6 +152,7 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
 
 int fs_handle_link(FS *fs, LinkRequest *req, LinkResponse *resp)
 {
+    printf("link\n");
     int parent_fd = fs_find_object_by_inode_n(fs, req->parent_inode_n);
     if (parent_fd <= 0)
         return -1;
@@ -152,6 +191,7 @@ int fs_handle_unlink(FS *fs, UnlinkRequest *req, UnlinkResponse *resp)
 
 int fs_handle_read(FS *fs, ReadRequest *req, ReadResponse *resp)
 {
+    printf("read\n");
     int fd = fs_find_object_by_inode_n(fs, req->inode_n);
     if (fd <= 0)
         return -1;
@@ -169,6 +209,7 @@ int fs_handle_read(FS *fs, ReadRequest *req, ReadResponse *resp)
 
 int fs_handle_write(FS *fs, WriteRequest *req, WriteResponse *resp)
 {
+    printf("write\n");
     int fd = fs_find_object_by_inode_n(fs, req->inode_n);
     if (fd <= 0)
         return -1;
@@ -185,7 +226,9 @@ int fs_handle_write(FS *fs, WriteRequest *req, WriteResponse *resp)
 
 int fs_handle_list(FS *fs, ListRequest *req, ListResponse *resp)
 {
+    printf("list\n");
     int fd = fs_find_object_by_inode_n(fs, req->inode_n);
+    printf("list found fd\n");
     if (fd <= 0)
         return -1;
     
@@ -214,20 +257,25 @@ int fs_handle_list(FS *fs, ListRequest *req, ListResponse *resp)
             if (resp->objects.count >= MAX_OBJECTS_COUNT)
                 return -1;
         }
-        free(ent);
     }
 
 
     printf("list: %d objects\n", resp->objects.count);
 
-    closedir(dir);
     if (fd != fs->root)
-        close(fd);
+    {
+        closedir(dir);
+    }
+    else
+    {
+        rewinddir(dir);
+    }
     return 0;
 }
 
 int fs_handle_rmdir(FS *fs, RmdirRequest *req, RmdirResponse *resp)
 {
+    printf("rmdir\n");
     int parent_fd = fs_find_object_by_inode_n(fs, req->parent_inode_n);
     if (parent_fd <= 0)
         return -1;
@@ -247,20 +295,33 @@ int fs_handle_rmdir(FS *fs, RmdirRequest *req, RmdirResponse *resp)
 
 int fs_handle_lookup(FS *fs, LookupRequest *req, LookupResponse *resp)
 {
+    printf("lookup\n");
     int parent_fd = fs_find_object_by_inode_n(fs, req->parent_inode_n);
     if (parent_fd <= 0)
+    {
+        printf("ERR: lookup not found parent dir\n");
         return -1;
+    }
 
     if (fchdir(parent_fd) < 0)
+    {
+        printf("ERR: lookup cant chdir\n");
         return -1;
+    }
 
     int fd = open(req->name, 0);
     if (fd <= 0)
+    {
+        printf("ERR: lookup cant open\n");
         return -1;
+    }
     
     struct stat st;
     if (fstat(fd, &st) < 0)
+    {
+        printf("ERR: lookup cant get stat\n");
         return -1;
+    }
 
     ObjectType type;
     if (S_ISDIR(st.st_mode))
@@ -281,6 +342,7 @@ int fs_handle_lookup(FS *fs, LookupRequest *req, LookupResponse *resp)
 
 int fs_handle_mount(FS *fs, MountRequest *req, MountResponse *resp)
 {
+    printf("mount\n");
     struct stat st;
     if (fstat(fs->root, &st) < 0)
         return -1;
@@ -359,4 +421,6 @@ void fs_handle(FS *fs, MethodRequest *req, MethodResponse *resp)
         resp->status = METHOD_STATUS_ERR;
     else
         resp->status = METHOD_STATUS_OK;
+    
+    fchdir(fs->root);
 }

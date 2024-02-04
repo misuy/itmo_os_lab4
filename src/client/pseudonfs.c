@@ -58,13 +58,14 @@ int pseudonfs_iterate(struct file *f, struct dir_context *ctxt)
         return -1;
     }
 
-    uint32_t off = 0;
+    uint32_t off = ctxt->pos;
     while (off < resp->list.objects.count)
     {
         Object obj = resp->list.objects.objects[off];
 
         dir_emit(ctxt, obj.name, strlen(obj.name), obj.info.inode_n, obj.info.type == OBJECT_TYPE_DIR ? DT_DIR : DT_REG);
         off++;
+        ctxt->pos++;
     }
 
     kfree(req);
