@@ -164,7 +164,7 @@ struct dentry * pseudonfs_lookup(struct inode *parent_inode, struct dentry *chil
         printk(KERN_ERR "lookup call err\n");
         return 0;
     }
-    struct inode *inode = pseudonfs_get_inode(parent_inode->i_sb, 0, (resp->lookup.info.type == OBJECT_TYPE_DIR ? S_IFDIR : S_IFREG) | 0x777, resp->lookup.info.inode_n);
+    struct inode *inode = pseudonfs_get_inode(parent_inode->i_sb, 0, (resp->lookup.info.type == OBJECT_TYPE_DIR ? S_IFDIR : S_IFREG) | 0777, resp->lookup.info.inode_n);
     if (inode)
         d_add(child_dentry, inode);
 
@@ -194,7 +194,7 @@ int pseudonfs_create(struct user_namespace *u_nmspc, struct inode *parent_inode,
         return -1;
     }
 
-    struct inode *inode = pseudonfs_get_inode(parent_inode->i_sb, 0, S_IFREG | 0x777, resp->create.inode_n);
+    struct inode *inode = pseudonfs_get_inode(parent_inode->i_sb, 0, S_IFREG | 0777, resp->create.inode_n);
     if (inode)
         d_add(child_dentry, inode);
     
@@ -224,7 +224,7 @@ int pseudonfs_mkdir(struct user_namespace *u_nmspc, struct inode *parent_inode, 
         return -1;
     }
 
-    struct inode *inode = pseudonfs_get_inode(parent_inode->i_sb, 0, S_IFDIR | 0x777, resp->create.inode_n);
+    struct inode *inode = pseudonfs_get_inode(parent_inode->i_sb, 0, S_IFDIR | 0777, resp->create.inode_n);
     if (inode)
         d_add(child_dentry, inode);
 
@@ -342,7 +342,7 @@ struct inode * pseudonfs_get_inode(struct super_block *sb, const struct inode *d
 int pseudonfs_fill_super(struct super_block *sb, void *data, int silent)
 {
     struct inode *inode;
-    inode = pseudonfs_get_inode(sb, NULL, S_IFDIR | 0x777, ROOT_DIR_INODE_N);
+    inode = pseudonfs_get_inode(sb, NULL, S_IFDIR | 0777, ROOT_DIR_INODE_N);
     sb->s_root = d_make_root(inode);
     if (sb->s_root == NULL) {
         return -1;

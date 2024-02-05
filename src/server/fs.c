@@ -30,12 +30,6 @@ int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
     if (fd == 0)
         return -1;
 
-    if (fchdir(fd) < 0)
-    {
-        printf("ERR: find_by_inode cant change dir\n");
-        return -1;
-    }
-
     struct stat st;
     if (fstat(fd, &st) < 0)
     {
@@ -54,6 +48,12 @@ int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
 
     if (S_ISDIR(st.st_mode))
     {
+        if (fchdir(fd) < 0)
+        {
+            printf("ERR: find_by_inode cant change dir\n");
+            return -1;
+        }
+
         DIR *dir = fdopendir(fd);
         if (!dir)
         {
@@ -76,20 +76,24 @@ int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
                 if (rec < 0)
                 {
                     close(new_fd);
+                    rewinddir(dir);
                     return -1;
                 }
                 else if (rec == 2)
                 {
+                    rewinddir(dir);
                     return 1;
                 }
                 else if (rec == 1)
                 {
                     close(new_fd);
+                    rewinddir(dir);
                     return 1;
                 }
                 close(new_fd);
             }
         }
+        rewinddir(dir);
     }
 
     if (fchdir(old_fd) < 0)
@@ -126,7 +130,7 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
     switch (req->type)
     {
         case OBJECT_TYPE_FILE:
-            fd = creat(req->name, S_IRWXU | S_IRWXG | S_IRWXO);
+            fd = creat(req->name, 777);
             if (fd < 0)
                 return -1;
             if (fstat(fd, &st) < 0)
@@ -135,7 +139,9 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
             break;
         
         case OBJECT_TYPE_DIR:
-            fd = mkdir(req->name, S_IRWXU | S_IRWXG | S_IRWXO);
+            if (mkdir(req->name, 777) < 0)
+                return -1;
+            fd = open(req->name, 0);
             if (fd < 0)
                 return -1;
             if (fstat(fd, &st) < 0)
@@ -143,6 +149,7 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
             resp->inode_n = st.st_ino;
             break;
     }
+    printf("create: inode_n: %lu\n", resp->inode_n);
     if (fd != fs->root)
         close(fd);
     if (parent_fd != fs->root)
@@ -194,11 +201,17 @@ int fs_handle_read(FS *fs, ReadRequest *req, ReadResponse *resp)
     printf("read\n");
     int fd = fs_find_object_by_inode_n(fs, req->inode_n);
     if (fd <= 0)
+    {
+        printf("ERR (read): cant find fd\n");
         return -1;
+    }
 
     resp->data.length = read(fd, resp->data.data, MAX_DATA_LENGTH);
     if (resp->data.length < 0)
+    {
+        printf("ERR (read): cant read\n");
         return -1;
+    }
 
     printf("read: %d\n", resp->data.length);
     
@@ -212,12 +225,18 @@ int fs_handle_write(FS *fs, WriteRequest *req, WriteResponse *resp)
     printf("write\n");
     int fd = fs_find_object_by_inode_n(fs, req->inode_n);
     if (fd <= 0)
+    {
+        printf("ERR (write): cant find fd\n");
         return -1;
+    }
 
     printf("write: %d\n", req->data.length);
 
     if (write(fd, req->data.data, req->data.length) < 0)
+    {
+        printf("ERR (write): cant write\n");
         return -1;
+    }
     
     if (fd != fs->root)
         close(fd);
@@ -295,7 +314,7 @@ int fs_handle_rmdir(FS *fs, RmdirRequest *req, RmdirResponse *resp)
 
 int fs_handle_lookup(FS *fs, LookupRequest *req, LookupResponse *resp)
 {
-    printf("lookup\n");
+    printf("lookup: %s\n", req->name);
     int parent_fd = fs_find_object_by_inode_n(fs, req->parent_inode_n);
     if (parent_fd <= 0)
     {
@@ -355,6 +374,7 @@ int fs_handle_mount(FS *fs, MountRequest *req, MountResponse *resp)
 
 void fs_handle(FS *fs, MethodRequest *req, MethodResponse *resp)
 {
+    printf("\n----------\n");
     printf("fs_handle\n");
     int res = 0;
     resp->type = req->type;
@@ -423,4 +443,5 @@ void fs_handle(FS *fs, MethodRequest *req, MethodResponse *resp)
         resp->status = METHOD_STATUS_OK;
     
     fchdir(fs->root);
+    printf("----------\n");
 }
