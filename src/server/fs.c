@@ -1,6 +1,9 @@
 #include "fs.h"
 
 #include <stdlib.h>
+#include <errno.h>
+
+extern int errno;
 
 int fs_init(char *path, FS *fs)
 {
@@ -55,6 +58,7 @@ int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
         }
 
         DIR *dir = fdopendir(fd);
+        rewinddir(dir);
         if (!dir)
         {
             printf("ERR: find_by_inode cant open dir\n");
@@ -66,11 +70,15 @@ int fs_find_object_by_inode_n_impl(int old_fd, int fd, ino_t inode_n, int *res)
         {
             if (strcmp(ent->d_name, ".") & strcmp(ent->d_name, ".."))
             {
-                int new_fd = open(ent->d_name, 0);
+                int new_fd = open(ent->d_name, O_RDWR, 0);
                 if (new_fd <= 0)
                 {
-                    printf("ERR: find_by_inode cant open fd\n");
-                    return -1;
+                    new_fd = open(ent->d_name, 0);
+                    if (new_fd <= 0)
+                    {
+                        printf("ERR: find_by_inode cant open fd\n");
+                        return -1;
+                    }
                 }
                 int rec = fs_find_object_by_inode_n_impl(fd, new_fd, inode_n, res);
                 if (rec < 0)
@@ -130,8 +138,10 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
     switch (req->type)
     {
         case OBJECT_TYPE_FILE:
-            fd = creat(req->name, 777);
+            fd = creat(req->name, 0777);
             if (fd < 0)
+                return -1;
+            if (fchmod(fd, 0777) < 0)
                 return -1;
             if (fstat(fd, &st) < 0)
                 return -1;
@@ -139,10 +149,12 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
             break;
         
         case OBJECT_TYPE_DIR:
-            if (mkdir(req->name, 777) < 0)
+            if (mkdir(req->name, 0777) < 0)
                 return -1;
             fd = open(req->name, 0);
             if (fd < 0)
+                return -1;
+            if (fchmod(fd, 0777) < 0)
                 return -1;
             if (fstat(fd, &st) < 0)
                 return -1;
@@ -206,6 +218,8 @@ int fs_handle_read(FS *fs, ReadRequest *req, ReadResponse *resp)
         return -1;
     }
 
+    memset(resp->data.data, 0, MAX_DATA_LENGTH);
+
     resp->data.length = read(fd, resp->data.data, MAX_DATA_LENGTH);
     if (resp->data.length < 0)
     {
@@ -213,7 +227,7 @@ int fs_handle_read(FS *fs, ReadRequest *req, ReadResponse *resp)
         return -1;
     }
 
-    printf("read: %d\n", resp->data.length);
+    printf("read: %d, %s\n", resp->data.length, resp->data.data);
     
     if (fd != fs->root)
         close(fd);
@@ -230,11 +244,18 @@ int fs_handle_write(FS *fs, WriteRequest *req, WriteResponse *resp)
         return -1;
     }
 
-    printf("write: %d\n", req->data.length);
+    struct stat st;
+    if (fstat(fd, &st) < 0)
+    {
+        printf("ERR (write): cant get stat\n");
+        return -1;
+    }
+
+    printf("write: len: %d, fd: %d, ino: %lu, data: %s\n", req->data.length, fd, st.st_ino, req->data.data);
 
     if (write(fd, req->data.data, req->data.length) < 0)
     {
-        printf("ERR (write): cant write\n");
+        printf("ERR (write): cant write %s\n", strerror(errno));
         return -1;
     }
     
