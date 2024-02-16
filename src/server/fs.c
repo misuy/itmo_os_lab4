@@ -122,6 +122,111 @@ int fs_find_object_by_inode_n(FS *fs, ino_t inode_n)
     return res;
 }
 
+int fs_find_parent_dir_and_name_by_inode_n_impl(FS *fs, int old_fd, int fd, ino_t inode_n, char **name, int *res)
+{
+    if (fd == 0)
+        return -1;
+
+    struct stat st;
+    if (fstat(fd, &st) < 0)
+    {
+        printf("ERR: find_parent_by_inode cant get stat\n");
+        return -1;
+    }
+
+    printf("find_parent_by_inode now in %lu\n", st.st_ino);
+
+    if (S_ISDIR(st.st_mode))
+    {
+        if (fchdir(fd) < 0)
+        {
+            printf("ERR: find_parent_by_inode cant change dir\n");
+            return -1;
+        }
+
+        DIR *dir = fdopendir(fd);
+        rewinddir(dir);
+        if (!dir)
+        {
+            printf("ERR: find_parent_by_inode cant open dir\n");
+            return -1;
+        }
+
+        struct dirent *ent;
+        while (ent = readdir(dir))
+        {
+            if (strcmp(ent->d_name, ".") & strcmp(ent->d_name, ".."))
+            {
+                int new_fd = open(ent->d_name, O_RDWR, 0);
+                if (new_fd <= 0)
+                {
+                    new_fd = open(ent->d_name, 0);
+                    if (new_fd <= 0)
+                    {
+                        printf("ERR: find_parent_by_inode cant open fd\n");
+                        return -1;
+                    }
+                }
+                struct stat new_st;
+                if (fstat(new_fd, &new_st) < 0)
+                {
+                    printf("ERR: find_parent_by_inode cant get new stat\n");
+                    return -1;
+                }
+
+                if (new_st.st_ino == inode_n)
+                {
+                    *res = fd;
+                    *name = malloc(strlen(ent->d_name) + 1);
+                    memcpy(*name, ent->d_name, strlen(ent->d_name));
+                    (*name)[strlen(ent->d_name)] = 0;
+                    close(new_fd);
+                    rewinddir(dir);
+                    return 2;
+                }
+
+                int rec = fs_find_object_by_inode_n_impl(fd, new_fd, inode_n, res);
+                if (rec < 0)
+                {
+                    close(new_fd);
+                    rewinddir(dir);
+                    return -1;
+                }
+                else if (rec == 2)
+                {
+                    rewinddir(dir);
+                    return 1;
+                }
+                else if (rec == 1)
+                {
+                    close(new_fd);
+                    rewinddir(dir);
+                    return 1;
+                }
+                close(new_fd);
+            }
+        }
+        rewinddir(dir);
+    }
+
+    if (fchdir(old_fd) < 0)
+    {
+        printf("ERR: find_parent_by_inode cant change dir\n");
+        return -1;
+    }
+    return 0;
+}
+
+int fs_find_parent_dir_and_name_by_inode_n(FS *fs, ino_t inode_n, char **name)
+{
+    printf("find parent: %lu, root: %d\n", inode_n, fs->root);
+    int res = 0;
+    if (fs_find_parent_dir_and_name_by_inode_n_impl(fs, fs->root, fs->root, inode_n, name, &res) < 0)
+        return -1;
+    printf("find parent: %d, name: %s\n", res, *name);
+    return res;
+}
+
 int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
 {
     printf("create\n");
@@ -172,23 +277,30 @@ int fs_handle_create(FS *fs, CreateRequest *req, CreateResponse *resp)
 int fs_handle_link(FS *fs, LinkRequest *req, LinkResponse *resp)
 {
     printf("link\n");
+
     int parent_fd = fs_find_object_by_inode_n(fs, req->parent_inode_n);
     if (parent_fd <= 0)
         return -1;
 
-    int source_fd = fs_find_object_by_inode_n(fs, req->source_inode_n);
-    if (source_fd <= 0)
+    char *source_name = 0;
+
+    int source_parent_fd = fs_find_parent_dir_and_name_by_inode_n(fs, req->source_inode_n, &source_name);
+    if ((source_parent_fd <= 0) | (source_name == 0))
         return -1;
 
-    printf("link: name: %s, to_fd: %d\n", req->name, source_fd);
+    printf("link: name: %s, source_name: %s, source_parent_fd: %d\n", req->name, source_name, source_parent_fd);
 
-    if (linkat(source_fd, "", parent_fd, req->name, 0) < 0)
+    if (linkat(source_parent_fd, source_name, parent_fd, req->name, 0) < 0)
+    {
+        printf("ERR (link): can't linkat\n");
         return -1;
+    }
     
     if (parent_fd != fs->root)
         close(parent_fd);
-    if (source_fd != fs->root)
-        close(source_fd);
+    if (source_parent_fd != fs->root)
+        close(source_parent_fd);
+    free(source_name);
     return 0;
 }
 
